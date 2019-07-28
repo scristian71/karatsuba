@@ -12,153 +12,174 @@ class BigNumber;
 std::ostream& operator<<(std::ostream& os, const BigNumber& bn);
 
 template <typename T>
-class myVector {
+class MyVector {
 public:
-    myVector(): data(), _capacity(0){}
+    MyVector(): m_data(), m_capacity(0){}
 
-    myVector(const myVector& other) {
+    MyVector(const MyVector& other)
+    {
         copy(other);
     }
-    myVector(myVector&& other) {
+
+    MyVector(MyVector&& other)
+    {
         move(std::move(other));
     }
 
-    myVector& operator=(const myVector& other)
+    MyVector& operator=(const MyVector& other)
     {
         copy(other);
         return *this;
     }
-    myVector& operator=(myVector&& other)
+    MyVector& operator=(MyVector&& other)
     {
         move(std::move(other));
         return *this;
     }
 
-    T& operator[](uint32_t i) const
+    T& operator[](size_t i) const
     {
-        return data[i];
+        return m_data[i];
     }
 
     T* begin() const
     {
-        return &data[0];
+        return &m_data[0];
     }
 
-    T* release()
+    T* end() const
     {
-        return data.release();
+        return &m_data[m_capacity];
     }
 
-    void reserve(uint32_t newCap)
+    void reserve(size_t newCap)
     {
-        if (newCap > _capacity)
+        if (newCap > m_capacity)
         {
             std::unique_ptr<T[]> newData(new T[newCap]);
-            std::copy(begin(), begin() + _capacity, &newData[0]);
-            std::swap(data, newData);
-            _capacity = newCap;
+            std::copy(begin(), end(), &newData[0]);
+            std::swap(m_data, newData);
+            m_capacity = newCap;
         }
     }
-    uint32_t capacity() const {return _capacity;}
+
+    size_t capacity() const
+    {
+        return m_capacity;
+    }
+
     void clear()
     {
-        std::fill_n(begin(), capacity(), T());
+        std::fill(begin(), end(), T());
     }
 
 private:
-    void move(myVector&& other)
+    void move(MyVector&& other)
     {
-        data.reset(other.release());
-        _capacity = other.capacity();
+        m_data.reset(other.m_data.release());
+        m_capacity = other.m_capacity;
     }
-    void copy(const myVector& other)
+    void copy(const MyVector& other)
     {
-        _capacity = other.capacity();
-        data.reset(new T[_capacity]);
-        std::copy(other.begin(), other.begin() + _capacity, begin());
+        m_capacity = other.capacity();
+        m_data.reset(new T[m_capacity]);
+        std::copy(other.begin(), other.end(), begin());
     }
-    std::unique_ptr<T[]> data;
-    uint32_t _capacity;
+
+    std::unique_ptr<T[]> m_data;
+    size_t m_capacity;
 };
 
 class BigNumber {
 public:
     enum class Sign {Positive, Negative};
-    myVector<uint8_t> data;
-    uint16_t digitCount;
-    Sign sign;
-    BigNumber() {init(0);}
-    BigNumber(const BigNumber& other){copy(other);}
-    BigNumber(BigNumber&& other):data(std::move(other.data))
-    {
-        digitCount = other.digitCount;
-        sign = other.sign;
-    }
-    BigNumber(int n) {init(n);}
 
-    void swap(BigNumber& other){
-        std::swap(digitCount, other.digitCount);
-        Sign s1 = sign;
-        sign = other.sign;
-        other.sign = s1;
-        std::swap(data, other.data);
+    MyVector<uint8_t>   m_data;
+    size_t              m_digitCount;
+    Sign                m_sign;
+
+    BigNumber()
+    {
+        init(0);
+    }
+
+    BigNumber(const BigNumber& other)
+    {
+        copy(other);
+    }
+
+    BigNumber(BigNumber&& other)
+        :
+          m_data(std::move(other.m_data)),
+          m_digitCount(other.m_digitCount),
+          m_sign(other.m_sign) {}
+    BigNumber(int n)
+    {
+        init(n);
+    }
+
+    void swap(BigNumber& other)
+    {
+        std::swap(m_digitCount, other.m_digitCount);
+        std::swap(m_sign, other.m_sign);
+        std::swap(m_data, other.m_data);
     }
     int64_t to_int64() const
     {
-        assert(digitCount <= 18);
+        assert(m_digitCount <= 18);
         int64_t retVal = 0;
         uint16_t i = 0;
         int64_t power10 = 1;
-        while (i < digitCount)
+        while (i < m_digitCount)
         {
-            retVal += retVal + data[i] * power10;
+            retVal += retVal + m_data[i] * power10;
             power10 *= 10;
             i++;
         }
-        return (sign == Sign::Positive)?retVal:-retVal;
+        return (m_sign == Sign::Positive)?retVal:-retVal;
     }
 
     int32_t to_int32() const
     {
-        assert(digitCount <= 9);
+        assert(m_digitCount <= 9);
         return static_cast<int32_t>(to_int64());
     }
 
     std::tuple<BigNumber, BigNumber> split(uint16_t pivot) const
     {
         assert(pivot != 0);
-        if (pivot >= digitCount)
+        if (pivot >= m_digitCount)
             return std::make_tuple(BigNumber(),BigNumber(*this));
-        pivot = digitCount - pivot; //because the number is stored in reverse order - begin with less semnificative digit
+        pivot = m_digitCount - pivot; //because the number is stored in reverse order - begin with less semnificative digit
         BigNumber n1;
         BigNumber n2;
         uint16_t i = 0;
         uint16_t j = 0;
         bool n2Valid = false;
-        if (pivot < digitCount)
+        if (pivot < m_digitCount)
         {
-            i = digitCount - pivot;
+            i = m_digitCount - pivot;
             n2Valid = true;
         } else
             i = 0;
         n1.ensureCapacity(pivot);
-        while (i < digitCount)
+        while (i < m_digitCount)
         {
-            n1.data[j] = data[i];
+            n1.m_data[j] = m_data[i];
             i++;j++;
         }
-        n1.digitCount = j;
+        n1.m_digitCount = j;
 
         if (n2Valid)
         {
             i = 0;
-            n2.ensureCapacity(digitCount - pivot);
-            while (i < digitCount - pivot)
+            n2.ensureCapacity(m_digitCount - pivot);
+            while (i < m_digitCount - pivot)
             {
-                n2.data[i] = data[i];
+                n2.m_data[i] = m_data[i];
                 i++;
             }
-            n2.digitCount = i;
+            n2.m_digitCount = i;
         }
         return std::make_tuple(std::move(n1),std::move(n2));
     }
@@ -166,8 +187,15 @@ public:
     static BigNumber negate(const BigNumber& other)
     {
         BigNumber temp(other);
-        temp.sign = (other.sign == Sign::Negative) ? Sign::Positive : Sign::Negative;
+        temp.m_sign = (other.m_sign == Sign::Negative) ? Sign::Positive : Sign::Negative;
         return temp;
+    }
+
+    bool operator==(const BigNumber& other)
+    {
+        return (m_sign == other.m_sign) &&
+                (m_digitCount == other.m_digitCount) &&
+                std::equal(m_data.begin(), m_data.begin() + m_digitCount, other.m_data.begin());
     }
 
     BigNumber& operator=(const BigNumber& other)
@@ -178,41 +206,39 @@ public:
 
     BigNumber& operator=(const BigNumber&& other)
     {
-        data = std::move(other.data);
-        digitCount = other.digitCount;
-        sign = other.sign;
+        m_data = std::move(other.m_data);
+        m_digitCount = other.m_digitCount;
+        m_sign = other.m_sign;
         return *this;
     }
 
     void normalize()
     {
-        while (data[digitCount - 1] == 0 && digitCount > 1)
+        while (m_data[m_digitCount - 1] == 0 && m_digitCount > 1)
         {
-            digitCount--;
+            m_digitCount--;
         }
     }
 
     BigNumber& operator-=(const BigNumber& other)
     {
-//        std::cout << "-this: " << *this << std::endl;
-//        std::cout << "-other: " << other << std::endl;
-        if ((sign == Sign::Negative && other.sign == Sign::Positive) || (other.sign == Sign::Negative && sign == Sign::Positive))
+        if ((m_sign == Sign::Negative && other.m_sign == Sign::Positive) || (other.m_sign == Sign::Negative && m_sign == Sign::Positive))
             return *this += negate(other);
 
         BigNumber temp;
-        if (digitCount < other.digitCount)
+        if (m_digitCount < other.m_digitCount)
         {
             temp = *this;
             copy(other);
-            sign = (other.sign == Sign::Negative) ? Sign::Positive : Sign::Negative;
+            m_sign = (other.m_sign == Sign::Negative) ? Sign::Positive : Sign::Negative;
         }
-        else if (digitCount == other.digitCount)
+        else if (m_digitCount == other.m_digitCount)
         {
-            if (other.data[digitCount - 1] > data[digitCount - 1])
+            if (other.m_data[m_digitCount - 1] > m_data[m_digitCount - 1])
             {
                 temp = *this;
                 copy(other);
-                sign = (other.sign == Sign::Negative) ? Sign::Positive : Sign::Negative;
+                m_sign = (other.m_sign == Sign::Negative) ? Sign::Positive : Sign::Negative;
             } else
             {
                 temp = other;
@@ -222,105 +248,103 @@ public:
 
         u_int16_t digitCount1 = 0;
         int8_t carry = 0;
-        while (digitCount1 < digitCount && digitCount1 < temp.digitCount)
+        while (digitCount1 < m_digitCount && digitCount1 < temp.m_digitCount)
         {
-            int8_t dif = data[digitCount1] - temp.data[digitCount1] - carry;
+            int8_t dif = m_data[digitCount1] - temp.m_data[digitCount1] - carry;
             if (dif < 0)
             {
                 dif += 10;
                 carry = 1;
             } else
                 carry = 0;
-            data[digitCount1] = dif;
+            m_data[digitCount1] = dif;
             digitCount1++;
         }
-        while (digitCount1 < digitCount)
+        while (digitCount1 < m_digitCount)
         {
-            int8_t dif = data[digitCount1] - carry;
+            int8_t dif = m_data[digitCount1] - carry;
             if (dif < 0)
             {
                 dif += 10;
                 carry = 1;
             } else
                 carry = 0;
-            data[digitCount1] = dif;
+            m_data[digitCount1] = dif;
             digitCount1++;
         }
         assert(carry == 0);
         normalize();
-//        std::cout << " -this: " << *this << std::endl;
+
         return *this;
     }
 
     BigNumber& operator+=(const BigNumber& other)
     {
-//        std::cout << "+this: " << *this << std::endl;
-//        std::cout << "+other: " << other << std::endl;
-        if ((sign == Sign::Negative && other.sign == Sign::Positive) || (other.sign == Sign::Negative && sign == Sign::Positive))
+        if ((m_sign == Sign::Negative && other.m_sign == Sign::Positive) || (other.m_sign == Sign::Negative && m_sign == Sign::Positive))
             return *this -= negate(other);
 
         u_int16_t digitCount1 = 0;
         u_int8_t carry = 0;
-        while (digitCount1 < digitCount && digitCount1 < other.digitCount)
+        while (digitCount1 < m_digitCount && digitCount1 < other.m_digitCount)
         {
-            u_int8_t sum = data[digitCount1] + other.data[digitCount1] + carry;
-            data[digitCount1] = sum % 10;
+            u_int8_t sum = m_data[digitCount1] + other.m_data[digitCount1] + carry;
+            m_data[digitCount1] = sum % 10;
             carry = sum / 10;
             digitCount1++;
         }
-        while (digitCount1 < digitCount)
+        while (digitCount1 < m_digitCount)
         {
-            u_int8_t sum = data[digitCount1] + carry;
-            data[digitCount1] = sum % 10;
+            u_int8_t sum = m_data[digitCount1] + carry;
+            m_data[digitCount1] = sum % 10;
             carry = sum / 10;
             digitCount1++;
         }
-        while (digitCount1 < other.digitCount)
+        while (digitCount1 < other.m_digitCount)
         {
-            ensureCapacity(other.digitCount);
-            u_int8_t sum = other.data[digitCount1] + carry;
-            data[digitCount1] = sum % 10;
+            ensureCapacity(other.m_digitCount);
+            u_int8_t sum = other.m_data[digitCount1] + carry;
+            m_data[digitCount1] = sum % 10;
             carry = sum / 10;
             digitCount1++;
         }
-        digitCount = digitCount1;
-        addCarry(digitCount, carry);
-//        std::cout << " +this: " << *this << std::endl;
+        m_digitCount = digitCount1;
+        addCarry(m_digitCount, carry);
+
         return *this;
     }
 
     void ensureCapacity(uint16_t newCapacity)
     {
-        while (newCapacity > data.capacity())
-            data.reserve(data.capacity() * 2);
+        while (newCapacity > m_data.capacity())
+            m_data.reserve(m_data.capacity() * 2);
     }
 
     void addCarry(uint32_t i, uint8_t carry)
     {
         if (carry > 0)
         {
-            ensureCapacity(digitCount + 1);
-            data[i] = carry;
-            digitCount++;
+            ensureCapacity(m_digitCount + 1);
+            m_data[i] = carry;
+            m_digitCount++;
         }
     }
 
     BigNumber& mul10(uint16_t pos)
     {
-        ensureCapacity(digitCount + pos);
-        std::copy_backward(data.begin(), data.begin() + digitCount, data.begin() + digitCount + pos);
+        ensureCapacity(m_digitCount + pos);
+        std::copy_backward(m_data.begin(), m_data.begin() + m_digitCount, m_data.begin() + m_digitCount + pos);
         for (uint16_t i = 0; i < pos; i++)
-            data[i] = 0;
-        digitCount += pos;
+            m_data[i] = 0;
+        m_digitCount += pos;
         normalize();
         return *this;
     }
 
     BigNumber& mul(const BigNumber& other)
     {
-        assert(digitCount == 1 || other.digitCount == 1);
+        assert(m_digitCount == 1 || other.m_digitCount == 1);
         BigNumber temp;
-        if ((digitCount == 1) && (other.digitCount > 1))
+        if ((m_digitCount == 1) && (other.m_digitCount > 1))
         {
             temp = *this;
             copy(other);
@@ -330,29 +354,27 @@ public:
         uint8_t carry = 0;
         uint16_t i = 0;
 
-        while (i < digitCount)
+        while (i < m_digitCount)
         {
-            uint8_t val = data[i] * temp.data[0] + carry;
-            data[i] = val % 10;
+            uint8_t val = m_data[i] * temp.m_data[0] + carry;
+            m_data[i] = val % 10;
             carry = val / 10;
             i++;
         }
         addCarry(i, carry);
         normalize();
-//        std::cout << " mul this: " << *this << std::endl;
+
         return *this;
     }
 
     BigNumber& operator*=(const BigNumber& other) //karatsuba
     {
-//        std::cout << "*this: " << *this << std::endl;
-//        std::cout << "*other: " << other << std::endl;
-        if (digitCount == 1 || other.digitCount == 1)
+        if (m_digitCount == 1 || other.m_digitCount == 1)
         {
             return mul(other);
         }
         /* calculates the size of the numbers */
-        uint16_t m = std::max(digitCount, other.digitCount);
+        uint16_t m = std::max(m_digitCount, other.m_digitCount);
         uint16_t m2 = m / 2;
 
         /* split the digit sequences about the middle */
@@ -366,51 +388,57 @@ public:
         BigNumber z3 = (BigNumber(z2).mul10(2 * m2) += ((BigNumber(z1) -= z2) -= z0).mul10(m2)) += z0;
         copy(z3);
         normalize();
-//        std::cout << " *this: " << *this << std::endl;
+
         return *this;
     }
 
-    void clear() {init(0);}
-    void init(int n){
+    void clear()
+    {
+        init(0);
+    }
+
+    void init(int n)
+    {
         if (n >= 0)
-            sign = Sign::Positive;
+            m_sign = Sign::Positive;
         else
-            sign = Sign::Negative;
+            m_sign = Sign::Negative;
         n = std::abs(n);
-        data.reserve(10);
-        data.clear();
+        m_data.reserve(10);
+        m_data.clear();
 
         if (n == 0)
         {
-            digitCount = 1;
-            data[0] = 0;
+            m_digitCount = 1;
+            m_data[0] = 0;
         } else
-            digitCount = 0;
+            m_digitCount = 0;
 
         while (n > 0)
         {
-            data[digitCount] = (n % 10);
+            m_data[m_digitCount] = (n % 10);
             n = n / 10;
-            digitCount++;
+            m_digitCount++;
         }
     }
 
-    void copy(const BigNumber& n){
-        digitCount = n.digitCount;
-        data.reserve(digitCount);
-        std::copy(n.data.begin(), n.data.begin() + digitCount, data.begin());
-        sign = n.sign;
+    void copy(const BigNumber& n)
+    {
+        m_digitCount = n.m_digitCount;
+        m_data.reserve(m_digitCount);
+        std::copy(n.m_data.begin(), n.m_data.begin() + m_digitCount, m_data.begin());
+        m_sign = n.m_sign;
     }
 };
 
 std::ostream& operator<<(std::ostream& os, const BigNumber& bn)
 {
     os << '[' << &bn << ':';
-    if (bn.sign == BigNumber::Sign::Negative)
+    if (bn.m_sign == BigNumber::Sign::Negative)
         os << '-';
-    for (uint16_t i = bn.digitCount; i > 0; i--)
-        os << char('0' + bn.data[i - 1]);
-    os << ':' << bn.digitCount << ']';
+    for (uint16_t i = bn.m_digitCount; i > 0; i--)
+        os << char('0' + bn.m_data[i - 1]);
+    os << ':' << bn.m_digitCount << ']';
     return os;
 }
 
