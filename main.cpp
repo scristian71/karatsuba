@@ -39,6 +39,7 @@ public:
 
     T& operator[](size_t i) const
     {
+        assert(i < m_capacity);
         return m_data[i];
     }
 
@@ -113,6 +114,7 @@ public:
           m_data(std::move(other.m_data)),
           m_digitCount(other.m_digitCount),
           m_sign(other.m_sign) {}
+
     BigNumber(int n)
     {
         init(n);
@@ -124,6 +126,7 @@ public:
         std::swap(m_sign, other.m_sign);
         std::swap(m_data, other.m_data);
     }
+
     int64_t to_int64() const
     {
         assert(m_digitCount <= 18);
@@ -136,7 +139,7 @@ public:
             power10 *= 10;
             i++;
         }
-        return (m_sign == Sign::Positive)?retVal:-retVal;
+        return (m_sign == Sign::Positive) ? retVal : -retVal;
     }
 
     int32_t to_int32() const
@@ -150,11 +153,14 @@ public:
         assert(pivot != 0);
         if (pivot >= m_digitCount)
             return std::make_tuple(BigNumber(),BigNumber(*this));
-        pivot = m_digitCount - pivot; //because the number is stored in reverse order - begin with less semnificative digit
+
+        pivot = m_digitCount - pivot; //number is stored in reverse order - begin with less semnificative digit
+
         BigNumber n1;
         BigNumber n2;
         uint16_t i = 0;
         uint16_t j = 0;
+
         bool n2Valid = false;
         if (pivot < m_digitCount)
         {
@@ -162,6 +168,7 @@ public:
             n2Valid = true;
         } else
             i = 0;
+
         n1.ensureCapacity(pivot);
         while (i < m_digitCount)
         {
@@ -392,6 +399,11 @@ public:
         return *this;
     }
 
+    BigNumber operator*(const BigNumber& other)
+    {
+        return operator *=(other);
+    }
+
     void clear()
     {
         init(0);
@@ -474,6 +486,7 @@ int main(int argc, char *argv[])
 //    std::cout << (BigNumber(312).mul10(10) -= BigNumber(312));
 //    std::cout << std::endl;
 
+    std::cout << "test equal: " << (BigNumber(1073741824) == BigNumber(1024) * BigNumber(1024) * BigNumber(1024)) << std::endl;
 
     BigNumber b1 = BigNumber(1073741824); //2^30
     std::cout << b1;
@@ -487,13 +500,23 @@ int main(int argc, char *argv[])
     std::cout << (b1 *= BigNumber(1024));
     std::cout << std::endl;
 
-    BigNumber b2 = b1;
-    for (int i = 0; i < 99; i++)
+    BigNumber b2(1);
+    for (int i = 0; i < 100; i++)
     {
-        b1 *= b2;
+        b2 *= b1;
     }
-    std::cout << b1;
+    std::cout << b2;
     std::cout << std::endl;
+
+    BigNumber b11(1);
+    for (int i = 0; i < 10000; i++)
+    {
+        b11 += b11;
+    }
+    std::cout << b11;
+    std::cout << std::endl;
+
+    std::cout << "test 2^10000: " << (b2 == b11) << std::endl;
 
     return 0;
 }
