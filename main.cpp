@@ -158,36 +158,15 @@ public:
 
         BigNumber n1;
         BigNumber n2;
-        uint16_t i = 0;
-        uint16_t j = 0;
-
-        bool n2Valid = false;
-        if (pivot < m_digitCount)
-        {
-            i = m_digitCount - pivot;
-            n2Valid = true;
-        } else
-            i = 0;
 
         n1.ensureCapacity(pivot);
-        while (i < m_digitCount)
-        {
-            n1.m_data[j] = m_data[i];
-            i++;j++;
-        }
-        n1.m_digitCount = j;
+        n1.m_digitCount = pivot;
+        std::copy(m_data.begin() + m_digitCount - pivot, m_data.begin() + m_digitCount, n1.m_data.begin());
 
-        if (n2Valid)
-        {
-            i = 0;
-            n2.ensureCapacity(m_digitCount - pivot);
-            while (i < m_digitCount - pivot)
-            {
-                n2.m_data[i] = m_data[i];
-                i++;
-            }
-            n2.m_digitCount = i;
-        }
+        n2.ensureCapacity(m_digitCount - pivot);
+        n2.m_digitCount = m_digitCount - pivot;
+        std::copy(m_data.begin(), m_data.begin() + m_digitCount - pivot, n2.m_data.begin());
+
         return std::make_tuple(std::move(n1),std::move(n2));
     }
 
