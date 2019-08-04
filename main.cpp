@@ -31,6 +31,7 @@ public:
         copy(other);
         return *this;
     }
+
     MyVector& operator=(MyVector&& other)
     {
         move(std::move(other));
@@ -58,7 +59,10 @@ public:
         if (newCap > m_capacity)
         {
             std::unique_ptr<T[]> newData(new T[newCap]);
-            std::copy(begin(), end(), &newData[0]);
+            if (m_data)
+            {
+                std::copy(begin(), end(), &newData[0]);
+            }
             std::swap(m_data, newData);
             m_capacity = newCap;
         }
@@ -79,16 +83,26 @@ private:
     {
         m_data.reset(other.m_data.release());
         m_capacity = other.m_capacity;
-    }
-    void copy(const MyVector& other)
-    {
-        m_capacity = other.capacity();
-        m_data.reset(new T[m_capacity]);
-        std::copy(other.begin(), other.end(), begin());
+        other.m_capacity = 0;
     }
 
-    std::unique_ptr<T[]> m_data;
-    size_t m_capacity;
+    void copy(const MyVector& other)
+    {
+        if (other.capacity() == 0)
+        {
+            m_data.reset();
+            m_capacity = 0;
+        }
+        else
+        {
+            m_capacity = other.capacity();
+            m_data.reset(new T[m_capacity]);
+            std::copy(other.begin(), other.end(), begin());
+        }
+    }
+
+    std::unique_ptr<T[]>    m_data;
+    size_t                  m_capacity;
 };
 
 class BigNumber {
@@ -110,10 +124,9 @@ public:
     }
 
     BigNumber(BigNumber&& other)
-        :
-          m_data(std::move(other.m_data)),
-          m_digitCount(other.m_digitCount),
-          m_sign(other.m_sign) {}
+    {
+        move(std::move(other));
+    }
 
     BigNumber(int n)
     {
@@ -177,7 +190,7 @@ public:
         return temp;
     }
 
-    bool operator==(const BigNumber& other)
+    bool operator==(const BigNumber& other) const
     {
         return (m_sign == other.m_sign) &&
                 (m_digitCount == other.m_digitCount) &&
@@ -186,57 +199,118 @@ public:
 
     BigNumber& operator=(const BigNumber& other)
     {
-        copy(other);
+        if (this != &other)
+        {
+            copy(other);
+        }
         return *this;
     }
 
-    BigNumber& operator=(const BigNumber&& other)
+    BigNumber& operator=(BigNumber&& other)
     {
-        m_data = std::move(other.m_data);
-        m_digitCount = other.m_digitCount;
-        m_sign = other.m_sign;
+        assert(this != &other);
+
+        move(std::move(other));
+
         return *this;
     }
 
     void normalize()
     {
-        while (m_data[m_digitCount - 1] == 0 && m_digitCount > 1)
+        while (m_data[m_digitCount - 1] == 0 && m_digitCount > 1) //number should have at least one digit (that can be zero)
         {
             m_digitCount--;
         }
     }
 
-    BigNumber& operator-=(const BigNumber& other)
+    bool isZero() const
     {
-        if ((m_sign == Sign::Negative && other.m_sign == Sign::Positive) || (other.m_sign == Sign::Negative && m_sign == Sign::Positive))
-            return *this += negate(other);
+        return (m_digitCount == 1) && (m_data[0] == 0);
+    }
 
-        BigNumber temp;
+    bool operator <(const BigNumber& other) const
+    {
+        if (isZero() && other.isZero())
+        {
+            return false;
+        }
+
+        if ((m_sign == Sign::Negative) && (other.m_sign == Sign::Positive))
+        {
+            return true;
+        }
+
+        if ((other.m_sign == Sign::Negative) && (m_sign == Sign::Positive))
+        {
+            return false;
+        }
+
         if (m_digitCount < other.m_digitCount)
         {
-            temp = *this;
-            copy(other);
-            m_sign = (other.m_sign == Sign::Negative) ? Sign::Positive : Sign::Negative;
+            return (m_sign == Sign::Negative) ? false : true;
         }
         else if (m_digitCount == other.m_digitCount)
         {
-            if (other.m_data[m_digitCount - 1] > m_data[m_digitCount - 1])
+            uint16_t i = m_digitCount - 1;
+            for(; (m_data[i] == m_data[i]) && (i > 0); i--);
+
+            if (m_data[i] == other.m_data[i])
             {
-                temp = *this;
-                copy(other);
-                m_sign = (other.m_sign == Sign::Negative) ? Sign::Positive : Sign::Negative;
-            } else
-            {
-                temp = other;
+                return false;
             }
-        } else
-            temp = other;
+            else if (m_data[i] < other.m_data[i])
+            {
+                return (m_sign == Sign::Negative) ? false : true;
+            }
+            else
+            {
+                return (m_sign == Sign::Positive) ? false : true;
+            }
+        }
+        else
+        {
+            return (m_sign == Sign::Positive) ? false : true;
+        }
+    }
+
+    bool operator <=(const BigNumber& other) const
+    {
+        return operator <(other) || operator==(other);
+    }
+
+    bool absless(const BigNumber& other) const
+    {
+        if (m_digitCount != other.m_digitCount)
+        {
+            return m_digitCount < other.m_digitCount;
+        }
+
+        uint16_t i = m_digitCount - 1;
+        for(; (m_data[i] == other.m_data[i]) && (i > 0); i--);
+
+        return (m_data[i] < other.m_data[i]);
+    }
+
+    bool abslessorequal(const BigNumber& other) const
+    {
+        if((m_digitCount == other.m_digitCount) &&
+            std::equal(m_data.begin(), m_data.begin() + m_digitCount, other.m_data.begin()))
+        {
+            return true;
+        }
+
+        return absless(other);
+    }
+
+    void normalizedSubtraction(const BigNumber& subtrahend)
+    {
+        assert(subtrahend.abslessorequal(*this));
 
         u_int16_t digitCount1 = 0;
         int8_t carry = 0;
-        while (digitCount1 < m_digitCount && digitCount1 < temp.m_digitCount)
+        while (digitCount1 < m_digitCount && digitCount1 < subtrahend.m_digitCount)
         {
-            int8_t dif = m_data[digitCount1] - temp.m_data[digitCount1] - carry;
+            int8_t dif = m_data[digitCount1] - subtrahend.m_data[digitCount1] - carry;
             if (dif < 0)
             {
                 dif += 10;
@@ -258,17 +332,13 @@ public:
             m_data[digitCount1] = dif;
             digitCount1++;
         }
+
         assert(carry == 0);
         normalize();
-
-        return *this;
     }
 
-    BigNumber& operator+=(const BigNumber& other)
+    void normalizedAddition(const BigNumber& other)
     {
-        if ((m_sign == Sign::Negative && other.m_sign == Sign::Positive) || (other.m_sign == Sign::Negative && m_sign == Sign::Positive))
-            return *this -= negate(other);
-
         u_int16_t digitCount1 = 0;
         u_int8_t carry = 0;
         while (digitCount1 < m_digitCount && digitCount1 < other.m_digitCount)
@@ -294,7 +364,52 @@ public:
             digitCount1++;
         }
         m_digitCount = digitCount1;
+
         addCarry(m_digitCount, carry);
+    }
+
+    BigNumber& operator-=(const BigNumber& other)
+    {
+        if (((m_sign == Sign::Negative) && (other.m_sign == Sign::Positive)) ||
+            ((other.m_sign == Sign::Negative) && m_sign == (Sign::Positive)))
+        {
+            normalizedAddition(other);
+        }
+        else if ((m_sign == Sign::Negative) && (other.m_sign == Sign::Negative))
+        {
+            return operator+=(negate(other));
+        }
+        else //((m_sign == Sign::Positive) && (other.m_sign == Sign::Positive))
+        {
+            if (absless(other))
+            {
+                BigNumber subtrahend(std::move(*this));
+                copy(other);
+                normalizedSubtraction(subtrahend);
+            }
+            else
+            {
+                normalizedSubtraction(other);
+            }
+        }
+
+        return *this;
+    }
+
+    BigNumber& operator+=(const BigNumber& other)
+    {
+        if ((m_sign == Sign::Negative && other.m_sign == Sign::Positive))
+        {
+            BigNumber savedThis(std::move(*this));
+            copy(other);
+            return operator-=(negate(savedThis));
+        }
+        else if ((other.m_sign == Sign::Negative) && (m_sign == Sign::Positive))
+        {
+            return operator-=(negate(other));
+        }
+
+        normalizedAddition(other);
 
         return *this;
     }
@@ -322,21 +437,36 @@ public:
         for (uint16_t i = 0; i < pos; i++)
             m_data[i] = 0;
         m_digitCount += pos;
-        normalize();
+
         return *this;
     }
 
     BigNumber& mul(const BigNumber& other)
     {
         assert(m_digitCount == 1 || other.m_digitCount == 1);
-        BigNumber temp;
-        if ((m_digitCount == 1) && (other.m_digitCount > 1))
+
+        if (isZero())
         {
-            temp = *this;
+            return *this;
+        }
+
+        if (other.isZero())
+        {
             copy(other);
-        } else
+            return *this;
+        }
+
+        BigNumber temp;
+        if (other.m_digitCount > 1)
+        {
+            temp = std::move(*this);
+            copy(other);
+        }
+        else
+        {
             temp = other;
-        // temp has for sure 1 digit
+        }
+        // *this has now the longest number and temp has 1 digit
         uint8_t carry = 0;
         uint16_t i = 0;
 
@@ -348,7 +478,6 @@ public:
             i++;
         }
         addCarry(i, carry);
-        normalize();
 
         return *this;
     }
@@ -359,6 +488,7 @@ public:
         {
             return mul(other);
         }
+
         /* calculates the size of the numbers */
         uint16_t m = std::max(m_digitCount, other.m_digitCount);
         uint16_t m2 = m / 2;
@@ -366,13 +496,17 @@ public:
         /* split the digit sequences about the middle */
         std::tuple<BigNumber, BigNumber> t1 = split(m2);
         std::tuple<BigNumber, BigNumber> t2 = other.split(m2);
+
         /* 3 calls made to numbers approximately half the size */
-        BigNumber z0 = (BigNumber(std::get<1>(t1)) *= std::get<1>(t2));
-        BigNumber z1 = ((BigNumber(std::get<1>(t1)) += std::get<0>(t1)) *=
-                            (BigNumber(std::get<1>(t2)) += std::get<0>(t2)));
-        BigNumber z2 = BigNumber(std::get<0>(t1)) *= std::get<0>(t2);
-        BigNumber z3 = (BigNumber(z2).mul10(2 * m2) += ((BigNumber(z1) -= z2) -= z0).mul10(m2)) += z0;
-        copy(z3);
+        BigNumber z0 = (std::get<1>(t1) * std::get<1>(t2));
+        BigNumber z1 = ((std::get<1>(t1)) + std::get<0>(t1)) *=
+                            ((std::get<1>(t2) + std::get<0>(t2)));
+        BigNumber z2 = (std::get<0>(t1) * std::get<0>(t2));
+
+        BigNumber z3 = (BigNumber(z2).mul10(2 * m2) += ((z1 -= z2) -= z0).mul10(m2)) += z0;
+
+        move(std::move(z3));
+
         normalize();
 
         return *this;
@@ -380,7 +514,17 @@ public:
 
     BigNumber operator*(const BigNumber& other)
     {
-        return operator *=(other);
+        return BigNumber(*this) *= other;
+    }
+
+    BigNumber operator-(const BigNumber& other)
+    {
+        return BigNumber(*this) -= other;
+    }
+
+    BigNumber operator+(const BigNumber& other)
+    {
+        return BigNumber(*this) += other;
     }
 
     void clear()
@@ -420,6 +564,15 @@ public:
         std::copy(n.m_data.begin(), n.m_data.begin() + m_digitCount, m_data.begin());
         m_sign = n.m_sign;
     }
+
+    void move(BigNumber&& other)
+    {
+        m_data = std::move(other.m_data);
+        m_digitCount = other.m_digitCount;
+        m_sign = other.m_sign;
+
+        other.m_digitCount = 0;
+    }
 };
 
 std::ostream& operator<<(std::ostream& os, const BigNumber& bn)
@@ -428,7 +581,10 @@ std::ostream& operator<<(std::ostream& os, const BigNumber& bn)
     if (bn.m_sign == BigNumber::Sign::Negative)
         os << '-';
     for (uint16_t i = bn.m_digitCount; i > 0; i--)
+    {
+        assert(bn.m_data[i - 1] < 10);
         os << char('0' + bn.m_data[i - 1]);
+    }
     os << ':' << bn.m_digitCount << ']';
     return os;
 }
@@ -465,11 +621,16 @@ int main(int argc, char *argv[])
 //    std::cout << (BigNumber(312).mul10(10) -= BigNumber(312));
 //    std::cout << std::endl;
 
+    BigNumber testb1(16);
+    BigNumber testb2(32);
+    auto res = BigNumber(16).abslessorequal(BigNumber(32));
+    std::cout << "res:" << res << std::endl;
+
     std::cout << "test equal: " << (BigNumber(1073741824) == BigNumber(1024) * BigNumber(1024) * BigNumber(1024)) << std::endl;
 
     BigNumber b1 = BigNumber(1073741824); //2^30
-    std::cout << b1;
-    std::cout << std::endl;
+    std::cout << b1 << std::endl;
+
     for (int i = 0; i < 2; i++)
     {
         std::cout << (b1 *= BigNumber(1073741824));
