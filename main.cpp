@@ -180,6 +180,9 @@ public:
         n2.m_digitCount = m_digitCount - pivot;
         std::copy(m_data.begin(), m_data.begin() + m_digitCount - pivot, n2.m_data.begin());
 
+        n1.normalize();
+        n2.normalize();
+
         return std::make_tuple(std::move(n1),std::move(n2));
     }
 
@@ -221,6 +224,11 @@ public:
         {
             m_digitCount--;
         }
+    }
+
+    bool isnormalized()
+    {
+        return isZero() || ((m_digitCount > 0) && (m_data[m_digitCount - 1] != 0));
     }
 
     bool isZero() const
@@ -334,6 +342,7 @@ public:
         }
 
         assert(carry == 0);
+
         normalize();
     }
 
@@ -366,6 +375,8 @@ public:
         m_digitCount = digitCount1;
 
         addCarry(m_digitCount, carry);
+
+        assert(isnormalized());
     }
 
     BigNumber& operator-=(const BigNumber& other)
@@ -393,6 +404,8 @@ public:
             }
         }
 
+        assert(isnormalized());
+
         return *this;
     }
 
@@ -411,6 +424,8 @@ public:
 
         normalizedAddition(other);
 
+        assert(isnormalized());
+
         return *this;
     }
 
@@ -428,15 +443,24 @@ public:
             m_data[i] = carry;
             m_digitCount++;
         }
+
+        assert(isnormalized());
     }
 
     BigNumber& mul10(uint16_t pos)
     {
+        if (isZero())
+        {
+            return *this;
+        }
+
         ensureCapacity(m_digitCount + pos);
         std::copy_backward(m_data.begin(), m_data.begin() + m_digitCount, m_data.begin() + m_digitCount + pos);
         for (uint16_t i = 0; i < pos; i++)
             m_data[i] = 0;
         m_digitCount += pos;
+
+        assert(isnormalized());
 
         return *this;
     }
@@ -479,6 +503,8 @@ public:
         }
         addCarry(i, carry);
 
+        assert(isnormalized());
+
         return *this;
     }
 
@@ -507,7 +533,7 @@ public:
 
         move(std::move(z3));
 
-        normalize();
+        assert(isnormalized());
 
         return *this;
     }
@@ -561,7 +587,10 @@ public:
     {
         m_digitCount = n.m_digitCount;
         m_data.reserve(m_digitCount);
-        std::copy(n.m_data.begin(), n.m_data.begin() + m_digitCount, m_data.begin());
+        if (m_digitCount > 0)
+        {
+            std::copy(n.m_data.begin(), n.m_data.begin() + m_digitCount, m_data.begin());
+        }
         m_sign = n.m_sign;
     }
 
@@ -577,7 +606,7 @@ public:
 
 std::ostream& operator<<(std::ostream& os, const BigNumber& bn)
 {
-    os << '[' << &bn << ':';
+    os << '[' << static_cast<void*>(bn.m_data.begin()) << ':';
     if (bn.m_sign == BigNumber::Sign::Negative)
         os << '-';
     for (uint16_t i = bn.m_digitCount; i > 0; i--)
@@ -621,8 +650,6 @@ int main(int argc, char *argv[])
 //    std::cout << (BigNumber(312).mul10(10) -= BigNumber(312));
 //    std::cout << std::endl;
 
-    BigNumber testb1(16);
-    BigNumber testb2(32);
     auto res = BigNumber(16).abslessorequal(BigNumber(32));
     std::cout << "res:" << res << std::endl;
 
